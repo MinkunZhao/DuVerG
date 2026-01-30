@@ -1,0 +1,46 @@
+llm:
+  model_name: ""
+  api_key: ""
+  base_url: ""
+  temperature: 0.2
+  max_tokens: 16,384
+  timeout: 300
+
+sandbox:
+  type: "local"
+  timeout: 300
+
+experiment:
+  max_retries: 2
+  task_timeout: 300
+
+router:
+  dense_graph_density: 0.05
+  large_graph_nodes: 5000
+  symbolic_keywords: ["shortest", "distance", "path", "flow", "max flow", "min cut", "triangle", "degree", "connected", "bipartite", "cycle", "matching"]
+  neural_keywords: ["like", "prefer", "label", "attribute", "describe", "explain", "exist", "is there"]
+
+decomposition:
+  enable: true
+  auto_trigger_nodes: 2000
+  seed_trigger_nodes: 100
+
+  base_branching_factor: 50
+  min_node_budget: 2000
+  max_node_budget: 2000000
+  min_edge_budget: 10000
+  max_edge_budget: 10000000
+
+  strategies:
+    local_nano:
+      keywords: ["degree", "neighbor", "connected to"]
+      default_hop: 1
+      node_scale: 5.0
+    local_micro:
+      keywords: ["common", "within 3 hops", "count", "pagerank"]
+      default_hop: 2
+      node_scale: 20.0
+    global_path:
+      keywords: ["reachability", "shortest", "path", "distance", "flow"]
+      default_hop: 3
+      node_scale: 15.0

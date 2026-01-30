@@ -1,0 +1,94 @@
+router:
+  system: "You are a Complexity-Aware Router for hybrid neural-symbolic graph reasoning."
+  user_template: |
+    Query: {query}
+    TaskType: {task_type}
+    GraphStats: {graph_stats}
+
+    Decide route:
+    - symbolic: computation/algorithmic (shortest path/flow/matching/substructure/hamilton) -> prefer NetworkX code.
+    - neural: semantic/ambiguous/preference (who likes golf?) -> answer directly.
+
+    Output JSON:
+    {{
+      "route": "symbolic" or "neural",
+      "why": "Brief reasoning",
+      "need_decomposition": true/false,
+      "decomposition": {{
+        "seed_nodes": [],
+        "hop": {default_hop},
+        "node_budget": {node_budget},
+        "edge_budget": {edge_budget}
+      }}
+    }}
+
+planner:
+  system: "You are a Graph Task Planner. Analyze the problem and outline logical steps."
+  user_template: |
+    Task: {query}
+    TaskType: {task_type}
+    GraphStats: {graph_stats}
+    GraphDataHint: {graph_hint}
+
+    Provide a high-level execution plan:
+    - algorithm_family: The category of algorithm (e.g., bfs, flow, backtracking, isomorphism).
+    - key_steps: Logical steps to solve the problem programmatically.
+    - defensive_checks: Edge cases to handle (e.g., disconnected graph, type mismatch).
+
+    Output JSON:
+    {{
+      "algorithm_family": "...",
+      "key_steps": ["..."],
+      "defensive_checks": ["..."]
+    }}
+
+coder:
+  system: "You are an expert Python programmer specializing in NetworkX for Graph Theory. You write robust, fault-tolerant code."
+  user_template: |
+    Task: {query}
+    TaskType: {task_type}
+    Plan: {plan_json}
+
+    Graph Input Data:
+    {graph_payload_hint}
+
+    Constraints:
+    1. Use ONLY standard python libraries and `networkx`.
+    2. Do NOT install new packages.
+    3. PRINT only the final answer. Do not print debug info.
+    4. WRAP dangerous code in try/except blocks and print a safe fallback (e.g., "No") if it fails.
+
+    If this is a RETRY, fix the error:
+    {error_feedback}
+
+    Write the complete Python code in a single ```python``` block.
+
+critic:
+  system: "You are a strict execution verifier. You compare two outputs for logical equivalence."
+  consistency_template: |
+    Query: {query}
+    OutputA: {out_a}
+    OutputB: {out_b}
+
+    Compare the two outputs.
+    1. If both are effectively the same (e.g. "Yes" vs "True", or "0-1" vs "1-0"), output consistent=true.
+    2. If one output implies failure (e.g., "No", "Error", "No path") and the other provides a specific concrete solution (e.g., a list, a number, a matching set), PREFER THE CONCRETE SOLUTION unless it is obviously hallucinated.
+    3. If they are logically contradictory (e.g. "Node 1" vs "Node 2"), explain the conflict.
+
+    Output JSON:
+    {{
+      "consistent": true/false,
+      "why": "Brief explanation",
+      "resolution": "pick_a" or "pick_b" or "need_tiebreaker",
+      "tiebreaker_hint": "Explain what specific check is needed to verify the truth."
+    }}
+
+reasoner:
+  system: "You are a Logical Graph Reasoner. Solve the problem step-by-step using semantic reasoning."
+  user_template: |
+    Task: {query}
+    TaskType: {task_type}
+    GraphSummary: {graph_hint}
+
+    Perform chain-of-thought reasoning and provide the final answer.
+    Answer:

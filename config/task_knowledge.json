@@ -1,0 +1,157 @@
+{
+  "hamilton": {
+    "definition": "Determine if there is a Hamiltonian Path (visits every node exactly once) or Cycle.",
+    "algorithm_guideline": "1. Check Query: If query asks for 'cycle', 'closed path', or 'tour', start==end. If 'path', start!=end is allowed.\n2. Standard Library: Use `nx.algorithms.tournament.hamiltonian_path` is NOT for general graphs. Use backtracking.\n3. Implementation: \n   - Use `nx.is_connected(G)`. If False, return 'No' (unless path fits in one component covering all nodes, which is rare).\n   - Use backtracking `dfs(current_node, visited_path)`. \n   - Optimization: Sort neighbors by degree.\n   - Timeout Guard: If N > 20, set a recursion limit or timeout.",
+    "pitfalls": "1. Do NOT assume it must be a cycle unless specified. \n2. Ensure graph has N nodes (check isolated ones).",
+    "output_requirement": "GraphWiz: 'Yes' or 'No'. NLGraph: Print the path sequence."
+  },
+  "maximum_flow": {
+    "definition": "Maximum flow in a capacitated network between source s and sink t.",
+    "algorithm_guideline": "1. Parse Capacities: Check if edges have 'capacity', 'weight', or 'cost'. If undefined, assume capacity=1.0.\n2. Undirected Handling: If G is undirected, replace each edge (u,v) with directed edges (u->v) and (v->u) with the SAME capacity.\n3. API: Use `nx.maximum_flow_value(G, s, t)`.\n4. Isolated Source/Sink: If s or t are not in G, flow is 0.",
+    "pitfalls": "Do NOT confuse capacity with weight. Do NOT fail if s/t are missing (print 0). Output must be a number.",
+    "output_requirement": "Print only the numeric value."
+  },
+  "flow": {
+    "definition": "Maximum flow between source s and sink t.",
+    "algorithm_guideline": "Use nx.maximum_flow_value(G, s, t). Ensure capacities are cast to integers/floats.",
+    "pitfalls": "The source or sink might not be in the graph nodes; if so, flow is 0. Directed vs Undirected must be respected based on GraphStats.",
+    "output_requirement": "Print only the final maximum flow value (integer)."
+  },
+  "matching": {
+    "definition": "Find the maximum matching in a bipartite graph.",
+    "algorithm_guideline": "1. ID Collision Prevention (CRITICAL): If inputs are 'Applicant 0..N' and 'Job 0..M', integers OVERLAP. You MUST strictly relabel them (e.g., 'u_0', 'v_0') or use a dictionary mapping. Do NOT add node 0 and node 0 into the same graph assuming they are different.\n2. Bipartite Construction: `G.add_nodes_from(..., bipartite=0)` and `(..., bipartite=1)`.\n3. Solver: `nx.bipartite.maximum_matching(G, top_nodes=set_of_u_nodes)`. Explicitly pass `top_nodes` to avoid ambiguity.\n4. Formatting: Convert internal IDs (u_0, v_1) back to integers for the final output.",
+    "pitfalls": "Using raw integers 0,1,2 for both sets implies connectivity within the set or node merging. Outputting 'No' when a solution exists simply because of an ID collision error.",
+    "output_requirement": "List pairs like '0-2\n1-3' then count total."
+  },
+  "gnn": {
+    "definition": "Simple Graph Convolution Layer (SGC).",
+    "algorithm_guideline": "Updated embedding h_i = sum(h_j) for all neighbors j of i. Perform this for the specified number of layers.",
+    "pitfalls": "Do not normalize weights unless explicitly asked. Keep results as integers. Ensure node self-loops are NOT added unless the query specifies 'including itself'.",
+    "output_requirement": "Print 'node X: [val1, val2]' for each node in ascending order."
+  },
+  "topology": {
+    "definition": "Topological Sort.",
+    "algorithm_guideline": "1. Construct DiGraph. \n2. IMPLICIT NODES: The query might say 'graph with N nodes' but only list edges for some. You MUST add `G.add_nodes_from(range(N))` to include isolated nodes.\n3. Cycle Check: `if not nx.is_directed_acyclic_graph(G): return 'No'`.\n4. Sort: `list(nx.topological_sort(G))`.",
+    "pitfalls": "Missing isolated nodes from the output sequence.",
+    "output_requirement": "Comma separated list."
+  },
+  "shortest_path": {
+    "definition": "Find the shortest path or distance.",
+    "algorithm_guideline": "1. WEIGHTED CHECK: Look for 'weight' in edge data. \n2. CRITICAL: Use `nx.shortest_path(G, source, target, weight='weight')`. If you omit `weight='weight'`, NetworkX finds the path with fewest edges (BFS), which is WRONG for weighted graphs.\n3. Direction: Respect directed/undirected nature.",
+    "pitfalls": "Forgetting `weight='weight'` argument. Not handling `NetworkXNoPath`.",
+    "output_requirement": "List of nodes or numeric weight depending on query."
+  },
+  "node_classification": {
+    "definition": "Predict node label based on neighbors (Homophily).",
+    "algorithm_guideline": "1. Basic: Majority vote of neighbors.\n2. Advanced (Label Propagation): If neighbors are unlabeled, iterate.\n   - Init: `labels = {known_nodes}`\n   - Loop 5 times:\n     - For unlabelled `u`: `scores = {label: sum(weight for v in neigh if labels[v]==label)}`\n     - Update `labels[u]` to max score.\n3. Fallback: If tie or isolated, pick the most common label in the whole graph.",
+    "pitfalls": "Giving up if immediate neighbors have no labels. Failing to handle ties.",
+    "output_requirement": "The label string."
+  },
+  "connected_nodes": {
+    "definition": "Find all nodes directly adjacent to node X.",
+    "algorithm_guideline": "Scan the edge list for any pair (X, Y) or (Y, X). The set of all such Y is the answer.",
+    "pitfalls": "Do not include node X itself. Ensure the list is sorted alphabetically.",
+    "output_requirement": "A comma-separated list of node IDs."
+  },
+  "disconnected_nodes": {
+    "definition": "Find nodes not connected to target X.",
+    "algorithm_guideline": "1. Universal Set: Parse 'nodes are numbered from 0 to N'. Universal = {0, ..., N}.\n2. Neighbors: `N(X) = set(G.neighbors(X))`.\n3. Calculation: `Universal - N(X) - {X}`.\n4. FORMAT: Sort numerically or alphabetically.",
+    "pitfalls": "Forgetting nodes that have no edges at all (isolated nodes). The graph G.nodes() might miss them if you only add edges.",
+    "output_requirement": "Comma separated list."
+  },
+  "triangle_counting": {
+    "definition": "Count number of triangles.",
+    "algorithm_guideline": "1. Use `sum(nx.triangles(G).values()) // 3`.\n2. Ensure graph is undirected (`nx.to_undirected()` if needed).",
+    "pitfalls": "Counting each triangle 3 times (once per node). Divide by 3.",
+    "output_requirement": "Integer."
+  },
+  "node_count": {
+    "definition": "Count nodes.",
+    "algorithm_guideline": "1. Universal Set: Look for 'nodes 0 to N'. Answer is N+1.\n2. Do NOT just count nodes in edge list. Some might be isolated.",
+    "pitfalls": "Returning `len(G.nodes)` when G was built only from edges.",
+    "output_requirement": "Integer."
+  },
+  "edge_existence": {
+    "definition": "Determine if there is a direct edge between node U and node V.",
+    "algorithm_guideline": "Check if (U, V) or (V, U) exists in the edges list. Do not perform BFS/DFS; only direct adjacency matters.",
+    "pitfalls": "Do not confuse 'connected' (reachable via path) with 'connected' (direct edge). For this task, only direct edge matters.",
+    "output_requirement": "Strictly 'Yes' or 'No'."
+  },
+  "substructure": {
+    "definition": "Determine if graph G' (pattern) appears as a subgraph within graph G (target).",
+    "algorithm_guideline": "1. Homogenize Nodes: Convert ALL nodes in both G and G' to strings immediately. This prevents 'int vs string' mismatch failures.\n2. Topology Check: Use 'nx.algorithms.isomorphism.DiGraphMatcher(G, G_prime)' (or GraphMatcher for undirected).\n3. Match Type: Use 'matcher.subgraph_is_monomorphic()' instead of 'subgraph_is_isomorphic()'. GraphWiz usually asks if the pattern edges exist in the target (Monomorphism), not necessarily as an induced subgraph.\n4. Fallback: If monomorphic fails, try 'subgraph_is_isomorphic()'.",
+    "pitfalls": "The biggest error source is node type mismatch (e.g., Target has node 0 (int), Pattern has node 'a' (str)). You MUST conversion: `G = nx.relabel_nodes(G, str)` and `G_prime = nx.relabel_nodes(G_prime, str)`. Do not match node attributes.",
+    "output_requirement": "Strictly 'Yes' or 'No'."
+  },
+  "clique": {
+     "definition": "Find the maximum clique.",
+     "algorithm_guideline": "Use `nx.make_max_clique_graph(G)` or `nx.find_cliques(G)`. Usually `max(nx.find_cliques(G), key=len)`.",
+     "output_requirement": "List the nodes in the clique."
+  },
+  "general": {
+    "definition": "General graph reasoning task.",
+    "algorithm_guideline": "Use standard NetworkX algorithms.",
+    "pitfalls": "Wrap all logic in try-except blocks.",
+    "output_requirement": "Final answer only."
+  },
+  "dfs": {
+    "definition": "Perform a Depth-First Search (DFS) traversal starting from a specific node.",
+    "algorithm_guideline": "1. Use `nx.dfs_preorder_nodes(G, source=start_node)`. \n2. Convert the generator to a list. \n3. Important: The benchmark often expects a specific lexicographical order if there are choices. Sort neighbors processing? Standard `nx.dfs_preorder_nodes` usually follows insertion order or iteration order. To allow consistency, explicitly sort neighbors if implementing manually, OR just use `list(nx.dfs_preorder_nodes(G, source=...))` and hope for alignment.",
+    "pitfalls": "Ensure the start node is correct. Output format must be a list of nodes like [<1>, <2>...].",
+    "output_requirement": "Print the list of visited nodes."
+  },
+  "jaccard": {
+    "definition": "Jaccard Coefficient of neighbors.",
+    "algorithm_guideline": "1. `preds = list(nx.jaccard_coefficient(G, [(u, v)]))` for Undirected. \n2. For Directed/Manual: `num = len(set(preds_u) & set(preds_v))`, `denom = len(set(preds_u) | set(preds_v))`. \n3. Directed Graph Note: Usually Jaccard is defined on Successors (outgoing neighbors).",
+    "pitfalls": "Division by zero (empty union -> 0).",
+    "output_requirement": "Print the float value."
+  },
+  "common_neighbor": {
+    "definition": "Calculate the number of common neighbors between two nodes.",
+    "algorithm_guideline": "1. Find neighbors of u and v. \n2. Intersect sets. \n3. Count size.",
+    "pitfalls": "Self-loops do not count unless specified.",
+    "output_requirement": "Print the integer count."
+  },
+  "page_rank": {
+    "definition": "Find the node with the largest PageRank after K iterations.",
+    "algorithm_guideline": "1. DO NOT use `nx.pagerank(max_iter=K)`. It raises error if not converged. \n2. IMPLEMENT MANUALLY: \n   - Init: `PR = {n: 1/N for n in nodes}` \n   - Loop K times: \n     `new_PR[i] = (1-alpha)/N + alpha * sum(PR[j] / out_degree[j] for j in predecessors(i))` \n   - Sink Nodes: Standard PageRank assumes sinks distribute to all. But for simple graph tasks, usually just follow the formula above (sinks contribute 0). \n3. Output: `max(PR, key=PR.get)`.",
+    "pitfalls": "Convergence errors. Outputting the value instead of the Node ID.",
+    "output_requirement": "Print ONLY the Node ID (e.g., '1')."
+  },
+  "predecessor": {
+    "definition": "Find predecessor nodes (nodes that have an edge pointing TO the target).",
+    "algorithm_guideline": "Use `list(G.predecessors(node))` for DiGraph.",
+    "pitfalls": "Sorted output is preferred.",
+    "output_requirement": "List of nodes."
+  },
+  "mst": {
+    "definition": "Calculate the Total Weight of the Minimum Spanning Tree.",
+    "algorithm_guideline": "1. Parse Graph: Assume edges are weighted. If text says 'weight: 7', parse it. If no weights are mentioned, default to 1.0. \n2. Algorithm: `mst = nx.minimum_spanning_tree(G)`. \n3. Calculation: `total_weight = sum(d.get('weight', 1) for u, v, d in mst.edges(data=True))`. \n4. IMPORTANT: Do NOT use `mst.size(weight='weight')` blindly if weights might be missing. Iterate edges explicitly.",
+    "pitfalls": "Returning edge count instead of weight sum. Treating weighted graphs as unweighted.",
+    "output_requirement": "Print the total weight as a number."
+  },
+  "triangle_count_local": {
+    "definition": "Count the number of triangles that a specific node U is part of.",
+    "algorithm_guideline": "1. Use `nx.triangles(G, u)`. \n2. Note: `nx.triangles(G)` returns a dictionary, but `nx.triangles(G, u)` returns an integer. Use the specific node version.\n3. Ensure the graph is undirected (`G.to_undirected()`) because triangle counting is standard on undirected graphs.",
+    "pitfalls": "Calling `nx.triangles(G)` and trying to sum the whole dictionary when only one node is asked for. Forgetting to handle directed graphs (convert to undirected).",
+    "output_requirement": "Print the integer count."
+  },
+  "local_clustering": {
+    "definition": "Compute the local clustering coefficient for a specific node U.",
+    "algorithm_guideline": "1. Use `nx.clustering(G, u)`. \n2. The clustering coefficient is defined as (number of triangles on u) / (possible triangles). \n3. Ensure G is undirected using `G.to_undirected()` unless strict directed clustering is requested (rare).",
+    "pitfalls": "ZeroDivisionError if the node degree is < 2 (NetworkX usually handles this by returning 0.0, but be safe).",
+    "output_requirement": "Print the float value rounded to 4 decimal places."
+  },
+  "local_pagerank_5iter": {
+    "definition": "Compute local PageRank on the 2-hop neighborhood (capped at 2000 nodes) and return the node (excluding the seed) with the highest score after exactly 5 iterations.",
+    "algorithm_guideline": "1. Build LOCAL subgraph: Perform BFS from seed. CRITICAL: Sort neighbors by ID ascending before adding to queue to ensure deterministic subgraph construction. Stop strictly when visited count reaches 2000.\n2. Re-index nodes 0..N-1 based on the sorted/BFS order.\n3. Init PR = 1/N.\n4. Loop 5 times:\n   - Init new_pr vector to 0.0.\n   - Iterate all nodes u:\n     - neighbors = local_graph.neighbors(u)\n     - degree = len(neighbors)\n     - if degree > 0: share = pr[u] / degree\n     - for v in neighbors: new_pr[v] += share\n   - Update PR: pr = 0.85 * new_pr + 0.15 / N\n5. Set pr[seed] = -1. Return max(pr, key=pr.get).",
+    "pitfalls": "1. Do NOT use `nx.pagerank`. Implement the manual iteration exactly as described.\n2. Do NOT iterate neighbors in random order during BFS; sort them to fix the subgraph.\n3. Ensure the Push logic divides by SOURCE node degree.",
+    "output_requirement": "Print ONLY the Node ID with the highest value."
+  },
+  "reachability_3hop": {
+    "definition": "Determine if node V is reachable from node U within exactly or at most 3 hops, under a computational budget.",
+    "algorithm_guideline": "1. Heuristic BFS: Perform a BFS starting from U.\n2. Budget Constraint: Since the benchmark is on a large graph, limit the number of visited nodes to 50,000. If the queue is empty or limit reached without finding V, return 'No'.\n3. Hop Constraint: Do not explore beyond depth 3.\n4. Implementation: Use a manual BFS loop with a `visited` counter, NOT `nx.shortest_path_length` (which ignores the node budget).",
+    "pitfalls": "Returning 'Yes' for a valid path that requires visiting >50,000 nodes to find (the benchmark assumes 'No' in this case).",
+    "output_requirement": "Print 'Yes' or 'No'."
+  }
+}
