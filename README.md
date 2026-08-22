@@ -1,32 +1,32 @@
 # DuVerG
 
-本仓库是 DuVerG 的代码实现。项目面向自然语言图推理任务，将复杂度感知路由、图结构解析、自适应子图分解、LLM 规划与代码生成以及双路答案验证组织为统一流程。
+This repository provides the implementation of **DuVerG**, a framework for natural-language graph reasoning. DuVerG integrates complexity-aware routing, graph structure parsing, adaptive subgraph decomposition, LLM-based planning and code generation, and dual-branch answer verification into a unified pipeline.
 
-系统在符号代码求解与神经语义推理之间动态选择路径，并通过独立候选答案、一致性检查和 critic 提升推理可靠性。对于大规模图，DuVerG 使用预算受控的局部子图，在保留任务相关结构的同时降低上下文与计算开销。
+The framework dynamically selects between symbolic code-based solving and neural semantic reasoning. It improves reliability through independently generated candidate answers, consistency checks, and critic-based adjudication. For large graphs, DuVerG constructs budget-constrained local subgraphs to preserve task-relevant structure while reducing context and computational overhead.
 
-## 方法概览
+## Method Overview
 
-1. **复杂度感知路由：** 根据任务语义与图规模选择符号或神经推理路径。
-2. **自适应图分解：** 按任务类型分配 hop、节点与边预算，提取相关局部结构。
-3. **双路协同求解：** planner 生成算法计划，两个 coder 或 reasoner 独立产生候选答案。
-4. **结果验证：** 结合程序执行、一致性检查与 critic 完成答案选择和错误恢复。
+1. **Complexity-aware routing:** Selects a symbolic or neural reasoning path according to task semantics and graph scale.
+2. **Adaptive graph decomposition:** Allocates hop, node, and edge budgets by task type to extract relevant local structures.
+3. **Dual-branch collaborative solving:** A planner formulates the algorithmic strategy, while two coders or reasoners independently produce candidate answers.
+4. **Answer verification:** Combines program execution, consistency checking, and critic-based adjudication for answer selection and error recovery.
 
-## 目录结构
+## Repository Structure
 
 ```text
 DuVerG-main/
-├── main.py              # 评测入口
-├── agents/              # router、planner、coder、reasoner 与 critic
-├── core/                # LLM 接口、任务定义、代码执行与评测
-├── workflow/engine.py   # 图推理主流程
-├── utils/               # 图解析、裁剪与结果记录
-├── config/              # 模型配置、prompts 与任务知识
-└── data/                # 图推理基准数据
+├── main.py              # Evaluation entry point
+├── agents/              # Router, planner, coder, reasoner, and critic
+├── core/                # LLM interface, task schemas, code execution, and evaluation
+├── workflow/engine.py   # Main graph-reasoning workflow
+├── utils/               # Graph parsing, pruning, and result logging
+├── config/              # Model settings, prompts, and task knowledge
+└── data/                # Graph-reasoning benchmark data
 ```
 
-## 环境安装
+## Environment Setup
 
-建议使用 Python 3.10 或更高版本：
+Python 3.10 or later is recommended:
 
 ```bash
 conda create -n duverg python=3.10 -y
@@ -35,9 +35,9 @@ conda activate duverg
 pip install networkx openai pydantic pyyaml tenacity
 ```
 
-## LLM 配置
+## LLM Configuration
 
-运行前编辑 `config/settings.yaml`：
+Before running the framework, edit `config/settings.yaml`:
 
 ```yaml
 llm:
@@ -47,11 +47,11 @@ llm:
   timeout: 300
 ```
 
-所使用的服务需要兼容 OpenAI Chat Completions API。路由阈值、分解预算、执行超时和重试次数均可在 `config/settings.yaml` 中调整。所有命令应从仓库根目录执行。
+The selected service must be compatible with the OpenAI Chat Completions API. Routing thresholds, decomposition budgets, execution timeouts, and retry limits can be adjusted in `config/settings.yaml`. All commands should be executed from the repository root.
 
-## 快速开始
+## Quick Start
 
-使用少量 GraphWiz 样本快速验证环境：
+Run a small subset of GraphWiz to verify the environment:
 
 ```bash
 python main.py \
@@ -60,15 +60,15 @@ python main.py \
   --output_dir results
 ```
 
-移除 `--max_tasks` 即可运行完整评测：
+Remove `--max_tasks` to run the complete evaluation set:
 
 ```bash
 python main.py --test_file data/GraphWiz/GraphWiz_test.json --output_dir results
 ```
 
-## 数据格式
+## Data Format
 
-输入文件为 JSON 数组，推荐格式如下：
+The input file must contain a JSON array. The recommended format is:
 
 ```json
 [
@@ -86,14 +86,14 @@ python main.py --test_file data/GraphWiz/GraphWiz_test.json --output_dir results
 ]
 ```
 
-入口同时兼容 `question` / `answer` / `type` 等常见基准字段。`graph_data` 可使用节点与边列表，也可省略并由系统从问题文本中解析图结构。
+The entry point also accepts common benchmark fields such as `question`, `answer`, and `type`. The optional `graph_data` field may contain explicit node and edge lists; when omitted, the framework attempts to parse the graph structure from the task text.
 
-## 评测与输出
+## Evaluation and Outputs
 
-完成运行后，终端会输出逐任务状态和整体 Accuracy，结果写入：
+During evaluation, the terminal reports the status of each task and the overall accuracy. Results are written to:
 
 ```text
 {output_dir}/result_{input_file_stem}.json
 ```
 
-结果文件记录每个样本的 `id`、`query`、`task_type` 和 `success`。评测器针对数值、集合、布尔判断、匹配、路径和拓扑序等任务使用相应判定规则，并在终端报告整体准确率。
+Each result record contains the sample `id`, `query`, `task_type`, and `success` status. The evaluator applies task-specific criteria for numerical, set-based, Boolean, matching, path, and topological-ordering problems.
