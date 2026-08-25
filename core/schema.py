@@ -11,8 +11,6 @@ class GraphTask(BaseModel):
 
     graph_data: Optional[Dict[str, Any]] = None
 
-    ground_truth: Optional[str] = None
-
 
 class ExecutionStatus(BaseModel):
     success: bool

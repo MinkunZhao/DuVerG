@@ -21,14 +21,14 @@ def adapt_data_to_task(raw_item, index, default_dataset_name="Unknown"):
     task_type = raw_item.get("task_type") or raw_item.get("type") or "reasoning"
     ground_truth = raw_item.get("ground_truth") or raw_item.get("answer") or str(raw_item.get("target", ""))
     task_id = str(raw_item.get("id")) if "id" in raw_item else f"{default_dataset_name}_{index}"
-    return {
+    task = {
         "id": task_id,
         "dataset_name": default_dataset_name,
         "query": query,
         "task_type": task_type,
         "graph_data": raw_item.get("graph_data", {}),
-        "ground_truth": ground_truth,
     }
+    return task, ground_truth
 
 
 def run_test_mode(engine, test_file, max_tasks=None, output_dir="results"):
@@ -48,7 +48,7 @@ def run_test_mode(engine, test_file, max_tasks=None, output_dir="results"):
 
     for i in range(n):
         raw_item = raw_tasks[i]
-        task_dict = adapt_data_to_task(raw_item, i, dataset_name)
+        task_dict, ground_truth = adapt_data_to_task(raw_item, i, dataset_name)
         task = GraphTask(**task_dict)
         evaluator = Evaluator(engine.llm)
 
@@ -58,15 +58,8 @@ def run_test_mode(engine, test_file, max_tasks=None, output_dir="results"):
         status = engine.run(task)
         is_correct = False
         if status['success']:
-            is_correct = evaluator.evaluate(dataset_name, task.task_type, status['output'], task.ground_truth,
+            is_correct = evaluator.evaluate(dataset_name, task.task_type, status['output'], ground_truth,
                                             task.query)
-
-        if not is_correct:
-            print(f"Attempt 1 failed for {task.id}. Retrying...")
-            status = engine.run(task, is_retry=True)
-            if status['success']:
-                is_correct = evaluator.evaluate(dataset_name, task.task_type, status['output'], task.ground_truth,
-                                                task.query)
 
         end_prompt = engine.llm.total_prompt_tokens
         end_compl = engine.llm.total_completion_tokens

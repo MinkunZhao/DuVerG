@@ -263,16 +263,13 @@ def locality_preserving_prune(
     hop: int,
     node_budget: int,
     edge_budget: int,
-) -> nx.Graph:
+) -> Optional[nx.Graph]:
     if G.number_of_nodes() == 0:
         return G
 
     seeds_in = [s for s in seed_nodes if s in G]
     if not seeds_in:
-        nodes_sorted = sorted(G.degree, key=lambda x: x[1], reverse=True)
-        picked = [n for n, _ in nodes_sorted[: max(1, min(node_budget, len(nodes_sorted)))]]
-        H = G.subgraph(picked).copy()
-        return _cap_edges(H, edge_budget)
+        return None
 
     visited = set(seeds_in)
     q = deque([(s, 0) for s in seeds_in])

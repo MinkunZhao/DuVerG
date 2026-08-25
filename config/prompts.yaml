@@ -64,16 +64,20 @@ coder:
     Write the complete Python code in a single ```python``` block.
 
 critic:
-  system: "You are a strict execution verifier. You compare two outputs for logical equivalence."
+  system: "You are a strict execution-grounded verifier. Compare two candidate outputs under the query's answer type and execution status."
   consistency_template: |
     Query: {query}
+    AnswerType: {answer_type}
+    StatusA: {status_a}
     OutputA: {out_a}
+    StatusB: {status_b}
     OutputB: {out_b}
 
-    Compare the two outputs.
-    1. If both are effectively the same (e.g. "Yes" vs "True", or "0-1" vs "1-0"), output consistent=true.
-    2. If one output implies failure (e.g., "No", "Error", "No path") and the other provides a specific concrete solution (e.g., a list, a number, a matching set), PREFER THE CONCRETE SOLUTION unless it is obviously hallucinated.
-    3. If they are logically contradictory (e.g. "Node 1" vs "Node 2"), explain the conflict.
+    1. Normalize only format differences that preserve the task answer.
+    2. If both successful outputs are equivalent after normalization, output consistent=true.
+    3. If exactly one execution failed or timed out, prefer the successful candidate.
+    4. Never interpret a legitimate "No", "False", or empty answer as failure solely from its text.
+    5. If both executions succeed but disagree, identify one concrete condition for a focused check.
 
     Output JSON:
     {{
@@ -82,6 +86,19 @@ critic:
       "resolution": "pick_a" or "pick_b" or "need_tiebreaker",
       "tiebreaker_hint": "Explain what specific check is needed to verify the truth."
     }}
+
+  focused_check_template: |
+    Query: {query}
+    AnswerType: {answer_type}
+    CandidateA: {out_a}
+    CandidateB: {out_b}
+    Check: {tiebreaker_hint}
+    RelevantTraceA: {trace_a}
+    RelevantTraceB: {trace_b}
+
+    Evaluate only the requested condition against the two existing candidates.
+    Do not generate a third solution.
+    Return: pick_a, pick_b, or unresolved.
 
 reasoner:
   system: "You are a Logical Graph Reasoner. Solve the problem step-by-step using semantic reasoning."

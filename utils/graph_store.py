@@ -103,11 +103,7 @@ class EdgeListGraphStore:
 
         seeds = [s for s in seed_nodes if s in self._nodes]
         if not seeds:
-            degs = []
-            for u, neigh in self._adj.items():
-                degs.append((u, len(neigh)))
-            degs.sort(key=lambda x: x[1], reverse=True)
-            seeds = [u for (u, _) in degs[:5]]
+            return None
 
         visited = set(seeds)
         q = deque([(s, 0) for s in seeds])

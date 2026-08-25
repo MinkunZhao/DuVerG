@@ -2,8 +2,7 @@ import json
 import time
 import tempfile
 import os
-from typing import Any, Dict, Tuple, Optional
-import re
+from typing import Any, Dict, Tuple
 
 from core.schema import GraphTask
 from agents.router import RouterAgent
@@ -17,9 +16,6 @@ from utils.graph_tools import (
     graph_stats,
     locality_preserving_prune,
     graph_to_payload,
-    solve_connected_nodes,
-    solve_disconnected_nodes,
-    solve_maximum_flow,
 )
 
 try:
@@ -49,7 +45,7 @@ class GraphReasoningEngine:
         self.decomp_cfg = cfg.get("decomposition", {})
 
 
-    def run(self, task: GraphTask, is_retry: bool = False) -> Dict[str, Any]:
+    def run(self, task: GraphTask) -> Dict[str, Any]:
         t0 = time.time()
 
         trace = {
@@ -67,7 +63,6 @@ class GraphReasoningEngine:
                 "critic_opinion": "",
                 "coder_a": {"code": "", "result": "", "success": False},
                 "coder_b": {"code": "", "result": "", "success": False},
-                "oracle": {"used": False, "oracle_answer": None},
             },
             "error_log": None,
         }
@@ -93,7 +88,6 @@ class GraphReasoningEngine:
             graph_hint = self._make_graph_hint(initial_stats, effective_graph_data)
 
             if self._should_decompose(initial_stats, route_obj):
-                trace["decomposition_log"]["triggered"] = True
                 mode = str(self.decomp_cfg.get("mode", "locality")).lower().strip()
                 if mode not in ("locality", "random"):
                     mode = "locality"
@@ -121,11 +115,15 @@ class GraphReasoningEngine:
                     seed_ints = []
                     for s in (seeds or []):
                         try:
-                            seed_ints.append(int(s))
+                            seed = int(s)
+                            if seed in store._nodes:
+                                seed_ints.append(seed)
                         except Exception:
                             pass
 
-                    if mode == "random":
+                    if not seed_ints:
+                        H = None
+                    elif mode == "random":
                         H = self._random_project_from_store(store, node_budget, edge_budget)
                     else:
                         H = store.prune_khop(
@@ -135,41 +133,36 @@ class GraphReasoningEngine:
                             edge_budget=edge_budget,
                         )
 
-                    effective_graph_data = graph_to_payload(H)
-                    new_stats = graph_stats(H)
-                    trace["decomposition_log"]["stats_after"] = new_stats
-                    graph_hint = self._make_graph_hint(new_stats, effective_graph_data)
-
                 else:
                     G_full = build_nx_graph(graph_data0, query=task.query)
+                    valid_seeds = [s for s in seeds if s in G_full]
 
-                    if mode == "random":
+                    if not valid_seeds:
+                        H = None
+                    elif mode == "random":
                         H = self._random_project_from_nx(G_full, node_budget, edge_budget)
                     else:
-                        H = locality_preserving_prune(G_full, seeds, hop, node_budget, edge_budget)
+                        H = locality_preserving_prune(G_full, valid_seeds, hop, node_budget, edge_budget)
 
+                if H is not None:
+                    trace["decomposition_log"]["triggered"] = True
                     effective_graph_data = graph_to_payload(H)
                     new_stats = graph_stats(H)
                     trace["decomposition_log"]["stats_after"] = new_stats
                     graph_hint = self._make_graph_hint(new_stats, effective_graph_data)
 
-            plan_query = task.query
-            if is_retry:
-                plan_query += "\n[System Note: Previous attempt failed. Refine strategy and consider edge cases.]"
-
-            plan = self.planner.plan(plan_query, task.task_type, initial_stats, graph_hint)
-            trace["planner_log"] = plan
-
             if route_obj.get("route") == "neural":
-                output = self._run_neural_path(task, graph_hint, trace)
-                return self._wrap_response(True, output, trace, t0)
+                output, success = self._run_neural_path(task, graph_hint, trace)
+                return self._wrap_response(success, output, trace, t0)
+
+            plan = self.planner.plan(task.query, task.task_type, initial_stats, graph_hint)
+            trace["planner_log"] = plan
 
             output, success = self._run_symbolic_path(
                 task=task,
                 plan=plan,
                 graph_data=effective_graph_data,
                 trace=trace,
-                is_retry=is_retry,
                 t0=t0,
             )
             return self._wrap_response(success, output, trace, t0)
@@ -221,12 +214,15 @@ class GraphReasoningEngine:
         seeds = (route_obj.get("decomposition", {}) or {}).get("seed_nodes", []) or []
         need = bool(route_obj.get("need_decomposition", False))
 
+        if not seeds:
+            return False
+
         n = int(stats.get("nodes", 0))
         if n >= auto_trigger:
             return True
-        if n >= seed_trigger and len(seeds) > 0:
+        if n >= seed_trigger and need:
             return True
-        return need
+        return False
 
     def _random_project_from_nx(self, G, node_budget: int, edge_budget: int):
         import random
@@ -299,62 +295,40 @@ class GraphReasoningEngine:
         return H
 
 
-    def _run_neural_path(self, task: GraphTask, graph_hint: str, trace: Dict) -> str:
+    def _run_neural_path(self, task: GraphTask, graph_hint: str, trace: Dict) -> Tuple[str, bool]:
         ans_a = self.reasoner_a.answer(task.query, task.task_type, graph_hint, temperature=0.2)
         ans_b = self.reasoner_b.answer(task.query, task.task_type, graph_hint, temperature=0.6)
 
         trace["verification_log"]["coder_a"]["result"] = ans_a
         trace["verification_log"]["coder_b"]["result"] = ans_b
 
-        if self.critic.outputs_roughly_equal(ans_a, ans_b):
-            return ans_a
+        if self.critic.outputs_roughly_equal(task.task_type, ans_a, ans_b):
+            return ans_a, True
 
-        ck = self.critic.consistency_check(task.query, ans_a, ans_b)
+        ck = self.critic.consistency_check(task.query, task.task_type, True, ans_a, True, ans_b)
         trace["verification_log"]["consistent"] = False
         trace["verification_log"]["critic_opinion"] = ck.get("why", "")
 
-        return ans_a if ck.get("resolution") == "pick_a" else ans_b
+        resolution = ck.get("resolution", "need_tiebreaker")
+        if resolution == "pick_a":
+            return ans_a, True
+        if resolution == "pick_b":
+            return ans_b, True
 
-
-    @staticmethod
-    def _extract_nums(s: str):
-        return re.findall(r"-?\d+", str(s or ""))
-
-    def _oracle_for_talk_like_a_graph(self, task: GraphTask, graph_data: Dict[str, Any]) -> Optional[str]:
-        """
-        Deterministic oracle for the problematic task families on talk_like_a_graph:
-          - connected_nodes / disconnected_nodes: direct adjacency semantics
-          - maximum_flow: use capacities from graph_data when present
-        """
-        ds = (task.dataset_name or "").lower()
-        if "talk_like_a_graph" not in ds:
-            return None
-
-        t = (task.task_type or "").lower()
-
-        if "connected_nodes" in t:
-            return solve_connected_nodes(task.query, graph_data)
-        if "disconnected_nodes" in t:
-            return solve_disconnected_nodes(task.query, graph_data)
-        if "maximum_flow" in t or t == "flow" or "max_flow" in t:
-            return solve_maximum_flow(task.query, graph_data)
-
-        return None
-
-    def _same_set(self, a: str, b: str) -> bool:
-        sa = set(self._extract_nums(a))
-        sb = set(self._extract_nums(b))
-        return sa == sb
-
-    def _same_num(self, a: str, b: str) -> bool:
-        pa = re.findall(r"[-+]?\d*\.\d+|\d+", str(a or "").replace(",", ""))
-        pb = re.findall(r"[-+]?\d*\.\d+|\d+", str(b or "").replace(",", ""))
-        if not pa or not pb:
-            return False
-        try:
-            return abs(float(pa[-1]) - float(pb[-1])) < 1e-6
-        except Exception:
-            return False
+        resolution = self.critic.focused_check(
+            task.query,
+            task.task_type,
+            ans_a,
+            ans_b,
+            ans_a,
+            ans_b,
+            ck.get("tiebreaker_hint", ""),
+        )
+        if resolution == "pick_a":
+            return ans_a, True
+        if resolution == "pick_b":
+            return ans_b, True
+        return ans_a, False
 
 
     def _run_symbolic_path(
@@ -363,15 +337,12 @@ class GraphReasoningEngine:
         plan: Dict,
         graph_data: Dict,
         trace: Dict,
-        is_retry: bool,
         t0: float,
     ) -> Tuple[str, bool]:
         payload_hint = self._graph_payload_hint(graph_data)
 
         diversity_a = "Prioritize standard NetworkX algorithms."
         diversity_b = "Focus on explicit edge-case handling (isolated nodes, missing nodes, capacity parsing)."
-        if is_retry:
-            diversity_a += " This is a retry, fix logic errors from previous run."
 
         code_a = self.coder_a.generate_code(task.query, task.task_type, plan, payload_hint, diversity_hint=diversity_a)
         ok_a, out_a = self.sandbox.execute(code_a or "")
@@ -381,36 +352,13 @@ class GraphReasoningEngine:
         ok_b, out_b = self.sandbox.execute(code_b or "")
         trace["verification_log"]["coder_b"] = {"code": code_b, "result": out_b, "success": ok_b}
 
-        if ok_a and ok_b and (out_a == out_b):
-            return out_a, True
-
-        oracle = self._oracle_for_talk_like_a_graph(task, graph_data)
-        if oracle is not None:
-            trace["verification_log"]["oracle"]["used"] = True
-            trace["verification_log"]["oracle"]["oracle_answer"] = oracle
-
-            t = (task.task_type or "").lower()
-            if ("connected_nodes" in t) or ("disconnected_nodes" in t):
-                if ok_a and self._same_set(out_a, oracle):
-                    return out_a, True
-                if ok_b and self._same_set(out_b, oracle):
-                    return out_b, True
-                return oracle, True
-
-            if ("maximum_flow" in t) or (t == "flow") or ("max_flow" in t):
-                if ok_a and self._same_num(out_a, oracle):
-                    return out_a, True
-                if ok_b and self._same_num(out_b, oracle):
-                    return out_b, True
-                return oracle, True
-
         if ok_a and ok_b:
-            if self.critic.outputs_roughly_equal(out_a, out_b):
+            if self.critic.outputs_roughly_equal(task.task_type, out_a, out_b):
                 trace["verification_log"]["consistent"] = True
                 return out_a, True
 
             trace["verification_log"]["consistent"] = False
-            ck = self.critic.consistency_check(task.query, out_a, out_b)
+            ck = self.critic.consistency_check(task.query, task.task_type, ok_a, out_a, ok_b, out_b)
             trace["verification_log"]["critic_opinion"] = ck.get("why", "Outputs differ but reason unclear.")
 
             res = ck.get("resolution", "need_tiebreaker")
@@ -419,19 +367,30 @@ class GraphReasoningEngine:
             if res == "pick_b":
                 return out_b, True
 
-            hint = ck.get("tiebreaker_hint", "")
-            code_c = self.coder_a.generate_code(
+            res = self.critic.focused_check(
                 task.query,
                 task.task_type,
-                plan,
-                payload_hint,
-                diversity_hint=f"Resolution hint: {hint}. Re-verify the logic and print the final answer.",
+                out_a,
+                out_b,
+                code_a,
+                code_b,
+                ck.get("tiebreaker_hint", ""),
             )
-            ok_c, out_c = self.sandbox.execute(code_c or "")
-            if ok_c:
-                return out_c, True
+            if res == "pick_a":
+                return out_a, True
+            if res == "pick_b":
+                return out_b, True
+            try:
+                stats = self._get_initial_stats(graph_data, task.query)
+            except Exception:
+                stats = {"nodes": 0, "edges": 0, "directed": False, "weighted": False, "capacitated": False}
+            return self._run_neural_path(task, self._make_graph_hint(stats, graph_data), trace)
 
-        best_output = out_a if ok_a else (out_b if ok_b else "")
+        if ok_a:
+            return out_a, True
+        if ok_b:
+            return out_b, True
+
         if not (ok_a or ok_b):
             last_error = out_a if out_a else "Unknown error"
             for _ in range(self.max_retries):
@@ -450,15 +409,11 @@ class GraphReasoningEngine:
                     return out_r, True
                 last_error = out_r
 
-        if (not best_output) or ("Error" in best_output):
-            try:
-                stats = self._get_initial_stats(graph_data, task.query)
-            except Exception:
-                stats = {"nodes": 0, "edges": 0, "directed": False, "weighted": False, "capacitated": False}
-            fallback_ans = self.reasoner_a.answer(task.query, task.task_type, self._make_graph_hint(stats, graph_data))
-            return fallback_ans, True
-
-        return best_output, (ok_a or ok_b)
+        try:
+            stats = self._get_initial_stats(graph_data, task.query)
+        except Exception:
+            stats = {"nodes": 0, "edges": 0, "directed": False, "weighted": False, "capacitated": False}
+        return self._run_neural_path(task, self._make_graph_hint(stats, graph_data), trace)
 
 
     def _graph_payload_hint(self, graph_data: Dict[str, Any]) -> str:
